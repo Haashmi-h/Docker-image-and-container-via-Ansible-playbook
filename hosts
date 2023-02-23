@@ -1,0 +1,4 @@
+[build]
+172.31.43.140 ansible_user="ec2-user" ansible_ssh_private_key_file="devops.pem"
+[test]
+172.31.39.45 ansible_user="ec2-user" ansible_ssh_private_key_file="devops.pem"

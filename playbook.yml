@@ -1,0 +1,134 @@
+---
+- name: "Building Docker Image from Github repository"
+  hosts: build
+  become: true
+  vars_files:
+    - dockerhub.vars
+  vars:
+    pkg:
+      - git
+      - pip
+      - docker
+    git_repo: "https://github.com/Haashmi-h/devops-flask.git"
+    clone_dir: "/var/flask_app"
+    image_name: "haashdock/oncompute"
+  tasks:
+    - name: "Build- Installing the packages"
+      yum:
+        name: "{{ pkg }}"
+        state: present
+
+    - name: "Build- Adding ec2-user to docker group"
+      user:
+        name: "ec2-user"
+        groups:
+          - docker
+        append: true
+
+    - name: "Build-Installing python extension for docker"
+      pip:
+        name: docker-py
+
+    - name: "Build- Restarting and enabling Docker service"
+      service:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: "Build - Clonning Git repo {{ git_repo }}"
+      git:
+        repo: "{{ git_repo }}"
+        dest: "{{ clone_dir }}"
+      register: clone_status
+
+    - name: "Build-Contents of clone_status"
+      debug:
+        var: clone_status
+
+    - name: "Build- Login to Dockerhub Account"
+      when: clone_status.changed == true
+      docker_login:
+        username: "{{ docker_user }}"
+        password: "{{ docker_password }}"
+        state: present
+
+    - name: "Build- Creating Docker image and push to Dockerhub"
+      when: clone_status.changed == true
+      docker_image:
+        source: build
+        build:
+          path: "{{ clone_dir }}"
+          pull: yes
+        name: "{{ image_name }}"
+        tag: "{{ item }}"
+        push: true
+        force_tag: yes
+        force_source: yes
+      with_items:
+        - "{{ clone_status.after }}"
+        - latest
+
+    - name: "Build- Deleting local image from Build server"
+      when: clone_status.changed == true
+      docker_image:
+        state: absent
+        name: "{{ image_name }}"
+        tag: "{{ item }}"
+      with_items:
+        - "{{ clone_status.after }}"
+        - latest
+
+    - name: "Build- Logout from Dockerhub"
+      when: clone_status.changed == true
+      docker_login:
+        username: "{{ docker_user }}"
+        password: "{{ docker_password }}"
+        state: absent
+
+- name: "Running image on test server"
+  hosts: test
+  become: true
+  vars:
+    image_name: "haashdock/oncompute"
+    pkgs:
+      - docker
+      - pip
+  tasks:
+    - name: "Test - Installing packages"
+      yum:
+        name: "{{ pkgs }}"
+        state: present
+
+    - name: "Test - Adding ec2-user to docker group"
+      user:
+        name: "ec2-user"
+        groups:
+          - docker
+        append: true
+
+    - name: "Test - Installing python extension for docker"
+      pip:
+        name: docker-py
+
+    - name: "Test - Restarting/Enabling Docker service"
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: "Test - Pulling Docker image"
+      docker_image:
+        name: "{{ image_name }}"
+        source: pull
+        force_source: true
+      register: image_status
+
+    - name: "Test - Run container"
+      when: image_status.changed == true
+      docker_container:
+        name: flaskapp
+        image: "{{ image_name }}:latest"
+        recreate: yes
+        pull: yes
+        published_ports:
+          - "80:5000"
