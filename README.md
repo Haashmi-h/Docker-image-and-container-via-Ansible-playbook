@@ -84,6 +84,7 @@ A container is created using this Docker image. </br>
 </br>
 </br>
 This playbook is executed on the "master" server using following command: </br>
+
 `ansible-playbook -i hosts playbook.yml`
 
 </br>
